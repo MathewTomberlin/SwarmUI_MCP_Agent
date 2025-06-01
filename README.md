@@ -1,6 +1,6 @@
 # SwarmUI_MCP_Agent
 A simple prototype SwarmUI MCP server with accompanying local LangChain Ollama agent. The prototype only exposes the
-SwarmUI /GenerateText2Image endpoint. It uses Node.js, Typescript, Langchain, @ModelContextProtocol, Axios, Express,
+SwarmUI /GenerateText2Image endpoint. It uses Python, Node.js, Typescript, Langchain, @ModelContextProtocol, Axios, Express,
 and Pydantic (though Pydantic is mostly unused in this implementation).
 
 # SwarmUI MCP Server
@@ -26,3 +26,12 @@ and AgentType of ZERO_SHOT_REACT_DESCRIPTION, with the generate_tool StructuredT
 prompt and then the agent is invoked with the input. The agent will use the generate_image Action with the supplied prompt
 as Action Input, calling the local SwarmUI API /GenerateText2Image endpoint with the prompt and other hardcoded image generation
 settings.
+
+# Starting the SwarmUI MCP Server
+From the /SwarmUI_MCP_Agent/src directory, run: tsc server.ts && node server.js
+
+# Running the Agent
+With the SwarmUIMCPServer running, from the /SwarmUI_MCP_Agent directory, run: python run.py
+
+# Viewing Generated Images
+Generated images are available within the SwarmUI Image History or directly within the SwarmUI /Ouput directory
