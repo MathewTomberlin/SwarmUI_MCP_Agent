@@ -124,16 +124,23 @@ app.post('/generate-image', async (req, res) => {
         if (!swarmServer) {
             throw new Error('[Error] SwarmUI server not initialized');
         }
-
         const prompt = String(req.body.prompt || "");
         const negative = String(req.body.negative || "");
         const images = parseInt(req.body.images || "1", 10);
         const steps = parseInt(req.body.steps || "50", 10);
         const cfgScale = parseFloat(req.body.cfgScale || "3.0");
         const seed = parseInt(req.body.seed || "-1", 10);
+        const model = String(req.body.model || "hyphoriaIllustrious20_v001");
+        const width = parseInt(req.body.width || "1024", 10);
+        const height = parseInt(req.body.height || "1024", 10);
+        const refinerControlPercentage = parseFloat(req.body.refinerControlPercentage || "0.0");
+        const refinerUpscale = parseFloat(req.body.refinerUpscale || "2.0");
+        const refinerMethod = String(req.body.refinerMethod || "stepSwap");
+        const sampler = String(req.body.sampler || "dpmpp_3m_sde_gpu");
+        const scheduler = String(req.body.scheduler || "simple");
 
-        console.log(`[Request] Generating image with prompt: ${prompt}, negative: ${negative}, images: ${images}, steps: ${steps}, cfgScale: ${cfgScale}, seed: ${seed}`);
-        const result = await swarmServer.generateImage(prompt, negative, images, seed, steps, cfgScale,"hyphoriaIllustrious20_v001",1024,1024,0.0,2.0,"stepSwap","dpmpp_3m_sde_gpu","simple");
+        console.log(`[Request] Generate Image\nprompt: ${prompt}\nnegative: ${negative}\nimages: ${images}\nsteps: ${steps}\ncfgScale: ${cfgScale}\nseed: ${seed}\nmodel: ${model}\nwidth: ${width}\nheight: ${height}\nrefinerControl: ${refinerControlPercentage}\nrefinerUpscale: ${refinerUpscale}\nrefinerMethod: ${refinerMethod}\nsampler: ${sampler}\nscheduler: ${scheduler}`);
+        const result = await swarmServer.generateImage(prompt, negative, images, seed, steps, cfgScale,model,width,height,refinerControlPercentage,refinerUpscale,refinerMethod,sampler,scheduler);
         res.json(result);
     } catch (err) {
         res.status(500).json({ error: err.message });
