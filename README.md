@@ -1,5 +1,7 @@
 # SwarmUI_MCP_Agent
-A simple prototype SwarmUI MCP server with accompanying local LangChain Ollama agent
+A simple prototype SwarmUI MCP server with accompanying local LangChain Ollama agent. The prototype only exposes the
+SwarmUI /GenerateText2Image endpoint. It uses Node.js, Typescript, Langchain, @ModelContextProtocol, Axios, Express,
+and Pydantic (though Pydantic is mostly unused in this implementation).
 
 # SwarmUI MCP Server
 The SwarmUI MCP Server prototype is declared in server.ts
