@@ -4,7 +4,7 @@ SwarmUI /GenerateText2Image endpoint. It uses Python, Node.js, Typescript, Langc
 and Pydantic (though Pydantic is mostly unused in this implementation).
 
 # SwarmUI MCP Server
-The SwarmUI MCP Server prototype is declared in server.ts
+The SwarmUI MCP Server prototype is declared in server.ts.
 
 The /GenerateText2Image and /GetNewSession SwarmUI API endpoints are exposed via generateImage() and getSessionId() methods, which
 are described in the (MCP) Server capabilities config when instantiating the Server. The Server
@@ -13,6 +13,8 @@ descriptions. The text descriptions for these tools are used by the llm to under
 the server.js Node server is started, the SwarmUIServer is initialized and an Express server is created
 with a POST endpoint at '/generate-image' that calls SwarmUIServer.generateImage, then the Express server
 is started. An Axios instance is created to make HTTP requests to the local SwarmUI API and stored in the SwarmUIServer class.
+
+DEV NOTE: You will likely need to change the port used by SwarmUI as well as the model hardcoded for image generation.
 
 # GenerateImage StructuredTool
 A generate_image StructuredTool is declared in tools.py that POSTS to the /generate-image endpoint of the Express server
@@ -31,7 +33,7 @@ settings.
 From the /SwarmUI_MCP_Agent/src directory, run: tsc server.ts && node server.js
 
 # Running the Agent
-With the SwarmUIMCPServer running, from the /SwarmUI_MCP_Agent directory, run: python run.py
+With the SwarmUIMCPServer running and SwarmUI itself running, from the /SwarmUI_MCP_Agent directory, run: python run.py
 
 # Viewing Generated Images
 Generated images are available within the SwarmUI Image History or directly within the SwarmUI /Ouput directory
