@@ -12,6 +12,12 @@ import os
 import streamlit as st
 import requests
 import base64
+import time
+
+def make_spinner(text = "In progress..."):
+    with st.spinner(text):
+        yield
+sp = iter(make_spinner())
 
 def extract_base64_from_data_uri(data_uri: str) -> str:
     # Extract base64 part from data URI
@@ -56,6 +62,7 @@ class SwarmUIAgent:
         self.graph = self._build_graph()
         self.categories = self.load_image_generation_categories()
         self.output = st.empty()
+        self.loading = st.empty()
         self.input = st.text_area("User Input",
                                    help="Enter your request to the agent. Mention 'generate' to trigger SwarmUI image generation.",
                                    placeholder="Enter your request for the agent. Mention 'generate' for SwarmUI image generation.")
@@ -133,6 +140,8 @@ class SwarmUIAgent:
     def analyze_input(self, state: AgentState) -> AgentState:
         """Analyze user input to determine if image generation is needed"""
         user_input = state["user_input"].lower()
+        # this starts the spinning
+        next(sp)
 
         # Keywords that suggest image generation
         image_keywords = [
@@ -352,6 +361,11 @@ Enhanced prompt:"""
                                 images=[base64_str]
                             )
                             response += f"📝 **Description**: {vision_response}\n"
+                            # spinning end
+                            next(sp, None)
+                        else:
+                            # spinning end
+                            next(sp, None)
 
                 else:
                     response = "❌ Image generation failed - no images returned"

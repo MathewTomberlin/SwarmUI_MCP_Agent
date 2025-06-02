@@ -187,7 +187,7 @@ function initializeServer() {
 }
 // Endpoint to generate an image using the SwarmUI MCP server
 app.post('/generate-image', function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
-    var prompt_1, negative, images, steps, cfgScale, seed, result, err_2;
+    var prompt_1, negative, images, steps, cfgScale, seed, model, width, height, refinerControlPercentage, refinerUpscale, refinerMethod, sampler, scheduler, result, err_2;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
@@ -202,8 +202,16 @@ app.post('/generate-image', function (req, res) { return __awaiter(void 0, void 
                 steps = parseInt(req.body.steps || "50", 10);
                 cfgScale = parseFloat(req.body.cfgScale || "3.0");
                 seed = parseInt(req.body.seed || "-1", 10);
-                console.log("[Request] Generating image with prompt: ".concat(prompt_1, ", negative: ").concat(negative, ", images: ").concat(images, ", steps: ").concat(steps, ", cfgScale: ").concat(cfgScale, ", seed: ").concat(seed));
-                return [4 /*yield*/, swarmServer.generateImage(prompt_1, negative, images, seed, steps, cfgScale, "hyphoriaIllustrious20_v001", 1024, 1024, 0.0, 2.0, "stepSwap", "dpmpp_3m_sde_gpu", "simple")];
+                model = String(req.body.model || "hyphoriaIllustrious20_v001");
+                width = parseInt(req.body.width || "1024", 10);
+                height = parseInt(req.body.height || "1024", 10);
+                refinerControlPercentage = parseFloat(req.body.refinerControlPercentage || "0.0");
+                refinerUpscale = parseFloat(req.body.refinerUpscale || "2.0");
+                refinerMethod = String(req.body.refinerMethod || "stepSwap");
+                sampler = String(req.body.sampler || "dpmpp_3m_sde_gpu");
+                scheduler = String(req.body.scheduler || "simple");
+                console.log("[Request] Generate Image\nprompt: ".concat(prompt_1, "\nnegative: ").concat(negative, "\nimages: ").concat(images, "\nsteps: ").concat(steps, "\ncfgScale: ").concat(cfgScale, "\nseed: ").concat(seed, "\nmodel: ").concat(model, "\nwidth: ").concat(width, "\nheight: ").concat(height, "\nrefinerControl: ").concat(refinerControlPercentage, "\nrefinerUpscale: ").concat(refinerUpscale, "\nrefinerMethod: ").concat(refinerMethod, "\nsampler: ").concat(sampler, "\nscheduler: ").concat(scheduler));
+                return [4 /*yield*/, swarmServer.generateImage(prompt_1, negative, images, seed, steps, cfgScale, model, width, height, refinerControlPercentage, refinerUpscale, refinerMethod, sampler, scheduler)];
             case 1:
                 result = _a.sent();
                 res.json(result);
