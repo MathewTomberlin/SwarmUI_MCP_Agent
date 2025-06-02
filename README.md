@@ -40,20 +40,27 @@ Generated images are available within the SwarmUI Image History or directly with
 
 ## Quickstart
 
-### 1. Clone the repository
+### 1. Clone Repository
 git clone <your-repo-url>
 cd <your-repo-name>
 
-### 2. Install Node.js dependencies
-npm install
+### 2. Install Dependencies (Script)
+Run setup.sh
 
-### 3. Install Python dependencies
+### 2B. Install Dependencies (Manual)
+npm install
 pip install -r requirements.txt
 
-### 4. Start the API server
-npx ts-node server.ts
+### 3. Start the API server
+tsc server.ts && node server.js
 
 ### 5. Start the UI
 streamlit run run.py
 
-### 6. Ensure SwarmUI is running and accessible at http://localhost:7801
+### 6. Ensure SwarmUI is running and accessible.
+
+### 7. Enter your SwarmUI Port number in the Agent Settings > SwarmUI API Port
+
+### 8. Select LLM Model and (optionally) Vision Model
+
+### 9. Enter image request and click submit. Wait for models to download, if not downloaded.
