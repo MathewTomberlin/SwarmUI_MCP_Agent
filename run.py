@@ -81,14 +81,6 @@ class SwarmUIAgent:
         """Extract image generation parameters from user input"""
         params = {}
         
-        # Extract prompt (everything before parameter specifications)
-        prompt_match = re.search(r'^(.*?)(?:\s*(?:steps|cfg|seed|model|width|height|images):|$)', user_input, re.IGNORECASE)
-        if prompt_match:
-            # Clean up common image generation prefixes (e.g., "generate an image of" implies a prompt)
-            prompt = prompt_match.group(1).strip()
-            prompt = re.sub(r'^(?:generate|create|make|draw)\s+(?:an?\s+)?(?:image\s+of\s+)?', '', prompt, flags=re.IGNORECASE)
-            params['prompt'] = prompt.strip()
-        
         # Extract numerical parameters
         param_patterns = {
             'steps': r'steps?\s*:?\s*(\d+)',
@@ -110,6 +102,7 @@ class SwarmUIAgent:
         
         # Extract string parameters
         string_patterns = {
+            'prompt': r'prompt\s*:?\s*["\']([^"\']+)["\']',
             'negative': r'negative\s*:?\s*["\']([^"\']+)["\']',
             'model': r'model\s*:?\s*["\']?([^"\']+)["\']?',
             'sampler': r'sampler\s*:?\s*["\']?([^"\']+)["\']?',
@@ -120,7 +113,7 @@ class SwarmUIAgent:
             match = re.search(pattern, user_input, re.IGNORECASE)
             if match:
                 params[param] = match.group(1).strip()
-        
+
         return params
 
     def route_response(self, state: AgentState) -> Literal["natural", "generate_image"]:
@@ -143,13 +136,8 @@ class SwarmUIAgent:
         """Prepare the tool call message for execution"""
         # Use the extracted parameters, with defaults for missing ones
         tool_input = {
-            "prompt": state["image_params"].get("prompt", state["user_input"]),
             **state["image_params"]  # Include any extracted parameters
         }
-        
-        # Remove empty prompt if it exists
-        if not tool_input["prompt"].strip():
-            tool_input["prompt"] = state["user_input"]
         
         tool_call = {
             "name": "generate_image",
