@@ -7,6 +7,8 @@ from langgraph.prebuilt import ToolNode
 from tools import generate_image # Import the generate_image tool from tools.py
 import re
 import json
+import yaml
+import os
 
 #Define agent state structure
 class AgentState(TypedDict):
@@ -16,32 +18,20 @@ class AgentState(TypedDict):
     image_params: dict
     enhanced_prompt: str
     image_type_category: str
+    explicit_prompt_type: str #'none', 'explicit', 'enhance'
 
 class SwarmUIAgent:
     def __init__(self, model_name: str = "dolphin-mistral"):
         self.llm = OllamaLLM(model=model_name)
         self.tools = [generate_image]
         self.graph = self._build_graph()
+        self.categories = self.load_image_generation_categories()
 
-        # Define parameter presets for different image types
-        self.parameter_presets = {
-            "anime": {
-                "width": 1024,
-                "height": 1024,
-                "cfgScale": 4,
-                "steps": 20,
-                "sampler": "euler",
-                "scheduler": "simple"
-            },
-            "realistic": {
-                "width": 1024,
-                "height": 1024,
-                "cfgScale": 3,
-                "steps": 50,
-                "sampler": "dpmpp_3m_sde_gpu",
-                "scheduler": "simple"
-            }
-        }
+    def load_image_generation_categories(self, config_path: str = "image_generation_categories.yaml") -> dict:
+        if not os.path.exists(config_path):
+            raise FileNotFoundError(f"Config file {config_path} not found.")
+        with open(config_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)["categories"]
 
     def _build_graph(self):
         # Create the state graph
@@ -94,20 +84,21 @@ class SwarmUIAgent:
         needs_image = any(keyword in user_input for keyword in image_keywords)
 
         # Extract explicit parameters from user input (these will override presets)
-        explicit_params = self.extract_explicit_params(state["user_input"])
+        explicit_params, explicit_prompt_type = self.extract_explicit_params(state["user_input"])
 
         return {
             **state,
             "needs_image_generation": needs_image,
             "image_params": explicit_params,
             "enhanced_prompt": "",
-            "image_type_category": ""
+            "image_type_category": "",
+            "explicit_prompt_type": explicit_prompt_type
         }
 
     def extract_explicit_params(self, user_input: str) -> dict:
         """Extract explicitly specified image generation parameters from user input"""
         params = {}
-        
+        explicit_prompt_type = "none"
         # Extract numerical parameters
         param_patterns = {
             'steps': r'steps?\s*:?\s*(\d+)',
@@ -143,7 +134,18 @@ class SwarmUIAgent:
             if match:
                 params[param] = match.group(1).strip()
 
-        return params
+        prompt = None
+        match = re.search(r'prompt\s*:?\s*["\']([^"\']+)["\']', user_input, re.IGNORECASE)
+        if match:
+            prompt = match.group(1).strip()
+            params['prompt'] = prompt
+            # Detect if prompt is already enhanced
+            if prompt.lower().startswith("enhance:"):
+                explicit_prompt_type = "enhance"
+            else:
+                explicit_prompt_type = "explicit"
+
+        return params, explicit_prompt_type
 
     def route_response(self, state: AgentState) -> Literal["natural", "generate_image"]:
         """Route to appropriate response type based on analysis"""
@@ -151,6 +153,13 @@ class SwarmUIAgent:
 
     def enhance_prompt(self, state: AgentState) -> AgentState:
         """Enhance the user's prompt for better image generation"""
+        if state.get("explicit_prompt_type") == "explicit":
+            # Use the explicit prompt as the enhanced prompt
+            return {
+                **state,
+                "enhanced_prompt": state["image_params"].get("prompt", "")
+            }
+
         user_input = state["user_input"]
         
         enhancement_prompt = f"""
@@ -173,7 +182,8 @@ Prompt Format Example: <tag>, <tag>, <tag phrase>, <tag phrase>, <tag>, <tag>
 Enhanced prompt:"""
 
         enhanced_prompt = self.llm.invoke(enhancement_prompt).strip()
-        
+        print(f"\n✨ Enhanced prompt: {enhanced_prompt}")
+
         return {
             **state,
             "enhanced_prompt": enhanced_prompt
@@ -184,20 +194,18 @@ Enhanced prompt:"""
         user_input = state["user_input"].lower()
         enhanced_prompt = state["enhanced_prompt"].lower()
         
-        # Categorize the image type based on keywords
-        category_keywords = {
-            "realistic": ["realism", "realistic", "photoreal", "photorealism", "real", "real life"],
-            "anime": ["anime", "cartoon", "manga"]
-        }
-        
-        detected_category = "anime"
-        for category, keywords in category_keywords.items():
-            if any(keyword in user_input for keyword in keywords):
+        # Reload categories from YAML each time
+        self.categories = self.load_image_generation_categories()
+
+        detected_category = None
+        for category, data in self.categories.items():
+            if any(keyword in user_input for keyword in data.get("keywords", [])):
                 detected_category = category
                 break
-        
-        # Get base parameters for the detected category
-        base_params = self.parameter_presets[detected_category].copy()
+        if not detected_category:
+            detected_category = next(iter(self.categories))  # fallback to first category
+
+        base_params = self.categories[detected_category]["parameters"].copy()
         
         # Override with any explicitly specified parameters
         final_params = {**base_params, **state["image_params"]}
@@ -232,7 +240,7 @@ Enhanced prompt:"""
         }
         
         ai_message = AIMessage(
-            content="I'll generate that image for you using parameters for {state['image_type_category']} style.",
+            content="",
             tool_calls=[tool_call]
         )
         
@@ -255,14 +263,15 @@ Enhanced prompt:"""
                 # Create a user-friendly response
                 if 'images' in result and result['images']:
                     response = f"✅ Image generated successfully!\n"
-                    response += f"🎨 Enhanced prompt: \"{state['enhanced_prompt']}\"\n"
+                    response += f"🎨 {'Enhanced Prompt' if state['explicit_prompt_type'] != 'explicit' else 'Prompt'}: {state['enhanced_prompt']}\n"
                     response += f"🎯 Detected style: {state['image_type_category']}\n"
                     response += f"📸 Generated {len(result['images'])} image(s)\n"
                     
                     # Show key parameters used
                     params = state['image_params']
-                    response += f"⚙️ Parameters: {params.get('width', 'N/A')}x{params.get('height', 'N/A')}, "
-                    response += f"Steps: {params.get('steps', 'N/A')}, CFG: {params.get('cfgScale', 'N/A')}\n"
+                    response += f"⚙️ Parameters: {params.get('model','INVALID MODEL')}, "
+                    response += f"Steps: {params.get('steps', 'INVALID STEPS')}, CFG: {params.get('cfgScale', 'INVALID CFG')}, "
+                    response += f"{params.get('width', '-')}x{params.get('height', '-')}\n"
                     
                     for i, img_url in enumerate(result['images'], 1):
                         response += f"🔗 Image {i}: {img_url}\n"
@@ -295,19 +304,14 @@ Enhanced prompt:"""
 
     def get_available_categories(self) -> list:
         """Return list of available image categories and their descriptions"""
-        categories = {
-            "realistic": "High steps, low cfg, optimized for generating realistic images",
-            "anime": "(Default) Low steps, high cfg, optimized for quickly generating anime images",
-        }
-        return categories
+        return self.categories
 
 if __name__ == "__main__":
     agent = SwarmUIAgent()
     
-    print("SwarmUI Agent with Intelligent Prompt Enhancement")
-    print("Available image categories:", ", ".join(agent.get_available_categories().keys()))
+    print("\n--SwarmUI Agent--")
+    print("Available image categories: NONE,", ", ".join(list(agent.get_available_categories().keys())[1:]))
     print("Examples:")
-    print("- 'Generate a fantasy landscape with dragons'") 
     print("- 'Generate an anime character with blue hair'")
     print("- 'Generate a photorealistic cat sitting in sunlight'")
 
@@ -319,7 +323,9 @@ if __name__ == "__main__":
         if user_input.strip():
             try:
                 result = agent.run(user_input)
-                print(f"\n{result['messages'][-1].content}")
-                    
+                # Print all AI messages in order, skipping the initial HumanMessage
+                for msg in result['messages']:
+                    if isinstance(msg, AIMessage):
+                        print(f"\n{msg.content}")
             except Exception as e:
                 print(f"Error: {e}")
