@@ -37,3 +37,23 @@ With the SwarmUIMCPServer running and SwarmUI itself running, from the /SwarmUI_
 
 # Viewing Generated Images
 Generated images are available within the SwarmUI Image History or directly within the SwarmUI /Ouput directory
+
+## Quickstart
+
+### 1. Clone the repository
+git clone <your-repo-url>
+cd <your-repo-name>
+
+### 2. Install Node.js dependencies
+npm install
+
+### 3. Install Python dependencies
+pip install -r requirements.txt
+
+### 4. Start the API server
+npx ts-node server.ts
+
+### 5. Start the UI
+streamlit run run.py
+
+### 6. Ensure SwarmUI is running and accessible at http://localhost:7801

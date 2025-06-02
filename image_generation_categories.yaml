@@ -5,8 +5,8 @@ categories:
       width: 1024
       height: 1024
       cfgScale: 7
-      steps: 20
-      sampler: euler
+      steps: 30
+      sampler: euler_a
       scheduler: simple
       refinerUpscale: 1
       model: OfficialStableDiffusion/sd_xl_base_1.0

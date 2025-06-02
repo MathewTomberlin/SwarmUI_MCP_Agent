@@ -1,0 +1,9 @@
+langchain_ollama
+langchain-core
+langchain
+langgraph
+streamlit
+requests
+pyyaml
+pydantic
+typing-extensions
