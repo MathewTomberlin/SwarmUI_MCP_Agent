@@ -9,6 +9,8 @@ import re
 import json
 import yaml
 import os
+import streamlit as st
+import requests
 
 #Define agent state structure
 class AgentState(TypedDict):
@@ -26,6 +28,34 @@ class SwarmUIAgent:
         self.tools = [generate_image]
         self.graph = self._build_graph()
         self.categories = self.load_image_generation_categories()
+        st.title("SwarmUI Agent")
+        self.output = st.empty()
+        self.input = st.text_area("User Input",
+                                   help="Enter your request to the agent. Mention 'generate' to trigger SwarmUI image generation.",
+                                   placeholder="Enter your request for the agent. Mention 'generate' for SwarmUI image generation.")
+        self.submit = st.button("Submit")
+        with self.output.container():
+            self.output.write(
+                f"""
+                Hello! I'm an agent that can help you generate images using your local SwarmUI API\n
+                **Setting Categories**: NONE, {", ".join(list(self.get_available_categories().keys())[1:])}\n
+                **Example**: Generate an anime image of a character with blue hair
+                """
+            )
+
+        if self.submit:
+            try:
+                result = self.run(self.input)
+                # Accumulate all AI messages as a single string, separated by double newlines for clarity
+                all_msgs = []
+                for msg in result['messages']:
+                    if isinstance(msg, AIMessage):
+                        all_msgs.append(msg.content)
+                
+                # Join all messages and display with st.markdown for multiline support
+                self.output.markdown('\n\n'.join(all_msgs).replace('\n', '  \n'))
+            except Exception as e:
+                self.output.write(f"Error: {e}")
 
     def load_image_generation_categories(self, config_path: str = "image_generation_categories.yaml") -> dict:
         if not os.path.exists(config_path):
@@ -182,7 +212,13 @@ Prompt Format Example: <tag>, <tag>, <tag phrase>, <tag phrase>, <tag>, <tag>
 Enhanced prompt:"""
 
         enhanced_prompt = self.llm.invoke(enhancement_prompt).strip()
-        print(f"\n✨ Enhanced prompt: {enhanced_prompt}")
+        self.output.write(
+            f"""\n
+            Generating image with SwarmUI...\n\n
+            📝 **Base Prompt**: {user_input}\n
+            ✨ **Enhanced Prompt**: {enhanced_prompt}
+            """
+        )
 
         return {
             **state,
@@ -262,19 +298,20 @@ Enhanced prompt:"""
                 
                 # Create a user-friendly response
                 if 'images' in result and result['images']:
-                    response = f"✅ Image generated successfully!\n"
-                    response += f"🎨 {'Enhanced Prompt' if state['explicit_prompt_type'] != 'explicit' else 'Prompt'}: {state['enhanced_prompt']}\n"
-                    response += f"🎯 Detected style: {state['image_type_category']}\n"
-                    response += f"📸 Generated {len(result['images'])} image(s)\n"
+                    response = f"✅ **Image generated successfully!**\n\n"
+                    response += f"🎨 {'**Enhanced Prompt**' if state['explicit_prompt_type'] != 'explicit' else '**Prompt**'}: {state['enhanced_prompt']}\n"
+                    response += f"🎯 **Style**: {state['image_type_category']}\n"
+                    response += f"📸 **Generated** {len(result['images'])} image(s)\n"
                     
                     # Show key parameters used
                     params = state['image_params']
-                    response += f"⚙️ Parameters: {params.get('model','INVALID MODEL')}, "
-                    response += f"Steps: {params.get('steps', 'INVALID STEPS')}, CFG: {params.get('cfgScale', 'INVALID CFG')}, "
-                    response += f"{params.get('width', '-')}x{params.get('height', '-')}\n"
+                    response += f"⚙️ **Parameters**: *{params.get('model','INVALID MODEL')}*, "
+                    response += f"**{params.get('width', '-')}x{params.get('height', '-')}**, "
+                    response += f"**Steps**: {params.get('steps', 'INVALID STEPS')}, **CFG**: {params.get('cfgScale', 'INVALID CFG')}\n"
                     
                     for i, img_url in enumerate(result['images'], 1):
-                        response += f"🔗 Image {i}: {img_url}\n"
+                        response += f"🔗 **Image {i}**: {img_url}\n"
+
                 else:
                     response = "❌ Image generation failed - no images returned"
                     
@@ -308,24 +345,3 @@ Enhanced prompt:"""
 
 if __name__ == "__main__":
     agent = SwarmUIAgent()
-    
-    print("\n--SwarmUI Agent--")
-    print("Available image categories: NONE,", ", ".join(list(agent.get_available_categories().keys())[1:]))
-    print("Examples:")
-    print("- 'Generate an anime character with blue hair'")
-    print("- 'Generate a photorealistic cat sitting in sunlight'")
-
-    while True:
-        user_input = input("\nInput ('quit' to exit): ")
-        if user_input.lower() in ['quit', 'exit']:
-            break
-            
-        if user_input.strip():
-            try:
-                result = agent.run(user_input)
-                # Print all AI messages in order, skipping the initial HumanMessage
-                for msg in result['messages']:
-                    if isinstance(msg, AIMessage):
-                        print(f"\n{msg.content}")
-            except Exception as e:
-                print(f"Error: {e}")
