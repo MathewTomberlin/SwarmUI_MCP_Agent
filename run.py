@@ -13,6 +13,13 @@ import streamlit as st
 import requests
 import base64
 
+def extract_base64_from_data_uri(data_uri: str) -> str:
+    # Extract base64 part from data URI
+    match = re.match(r"data:.*?;base64,(.*)", data_uri)
+    if not match:
+        raise ValueError("Invalid data URI format")
+    return match.group(1)
+
 def get_image_data_uri(img_url: str, api_base_url: str) -> str:
     if img_url.startswith("data:"):
         return img_url  # Already a data URI
@@ -38,27 +45,34 @@ class AgentState(TypedDict):
 
 class SwarmUIAgent:
     def __init__(self, model_name: str = "dolphin-mistral"):
-        self.llm = OllamaLLM(model=model_name)
+        st.title("SwarmUI Agent")
+        with st.expander("Settings", expanded=False):
+            self.port = st.text_input("SwarmUI API Port", value="7801")
+            self.llm_model = st.selectbox("LLM Model",["dolphin-mistral", "dolphin-llama3"])
+            self.vision_model = st.selectbox("Vision Model", ["gemma3:12b", "llava","bakllava","qwen-vl", "None"])
+        self.llm = OllamaLLM(model=self.llm_model)
+        self.vision_llm = OllamaLLM(model=self.vision_model)
         self.tools = [generate_image]
         self.graph = self._build_graph()
         self.categories = self.load_image_generation_categories()
-        st.title("SwarmUI Agent")
         self.output = st.empty()
         self.input = st.text_area("User Input",
                                    help="Enter your request to the agent. Mention 'generate' to trigger SwarmUI image generation.",
                                    placeholder="Enter your request for the agent. Mention 'generate' for SwarmUI image generation.")
         self.submit = st.button("Submit")
-        with self.output.container():
-            self.output.write(
-                f"""
-                Hello! I'm an agent that can help you generate images using your local SwarmUI API\n
-                **Setting Categories**: NONE, {", ".join(list(self.get_available_categories().keys())[1:])}\n
-                **Example**: Generate an anime image of a character with blue hair
-                """
-            )
+        if "welcome_shown" not in st.session_state:
+            with self.output.container():
+                self.output.write(
+                    f"""
+                    Hello! I'm an agent that can help you generate images using your local SwarmUI API\n
+                    **Setting Categories**: NONE, {", ".join(list(self.get_available_categories().keys())[1:])}\n
+                    **Example**: Generate an anime image of a character with blue hair
+                    """
+                )
 
         if self.submit:
             try:
+                st.session_state["welcome_shown"] = True
                 result = self.run(self.input)
                 # Accumulate all AI messages as a single string, separated by double newlines for clarity
                 all_msgs = []
@@ -303,7 +317,7 @@ Enhanced prompt:"""
         """Format the tool response for display"""
         # Get the last message (should be a ToolMessage from the tool execution)
         last_message = state["messages"][-1]
-        api_base_url = "http://localhost:7801"  # Change to your SwarmUI API base URL
+        api_base_url = f"http://localhost:{self.port}"  # Change to your SwarmUI API base URL
 
         if isinstance(last_message, ToolMessage):
             # The tool has been executed, now format the response
@@ -326,9 +340,18 @@ Enhanced prompt:"""
                     
                     for i, img_url in enumerate(result['images'], 1):
                         data_uri = get_image_data_uri(img_url, api_base_url)
-                        # Display image in Streamlit
                         st.image(data_uri, caption=f"Image {i}")
                         response += f"🔗 **Image {i}**: {img_url}\n"
+
+                        if self.vision_model != "None":
+                            # Extract base64 string for vision model
+                            base64_str = extract_base64_from_data_uri(data_uri)
+                            description_prompt = "Describe this image in detail. Be as accurate and precise as possible. If a detail is too small or blurry to clearly understand, ignore it."
+                            vision_response = self.vision_llm.invoke(
+                                input=description_prompt,
+                                images=[base64_str]
+                            )
+                            response += f"📝 **Description**: {vision_response}\n"
 
                 else:
                     response = "❌ Image generation failed - no images returned"
