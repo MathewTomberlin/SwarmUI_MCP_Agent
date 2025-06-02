@@ -11,6 +11,20 @@ import yaml
 import os
 import streamlit as st
 import requests
+import base64
+
+def get_image_data_uri(img_url: str, api_base_url: str) -> str:
+    if img_url.startswith("data:"):
+        return img_url  # Already a data URI
+    # Otherwise, fetch the image from the API
+    # Ensure the URL is absolute
+    if not img_url.startswith("http"):
+        img_url = api_base_url.rstrip("/") + "/" + img_url.lstrip("/")
+    resp = requests.get(img_url)
+    resp.raise_for_status()
+    mime = resp.headers.get("Content-Type", "image/png")  # Default to PNG
+    b64 = base64.b64encode(resp.content).decode("utf-8")
+    return f"data:{mime};base64,{b64}"
 
 #Define agent state structure
 class AgentState(TypedDict):
@@ -289,7 +303,8 @@ Enhanced prompt:"""
         """Format the tool response for display"""
         # Get the last message (should be a ToolMessage from the tool execution)
         last_message = state["messages"][-1]
-        
+        api_base_url = "http://localhost:7801"  # Change to your SwarmUI API base URL
+
         if isinstance(last_message, ToolMessage):
             # The tool has been executed, now format the response
             try:
@@ -310,6 +325,9 @@ Enhanced prompt:"""
                     response += f"**Steps**: {params.get('steps', 'INVALID STEPS')}, **CFG**: {params.get('cfgScale', 'INVALID CFG')}\n"
                     
                     for i, img_url in enumerate(result['images'], 1):
+                        data_uri = get_image_data_uri(img_url, api_base_url)
+                        # Display image in Streamlit
+                        st.image(data_uri, caption=f"Image {i}")
                         response += f"🔗 **Image {i}**: {img_url}\n"
 
                 else:
