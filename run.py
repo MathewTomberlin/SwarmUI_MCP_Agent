@@ -1,7 +1,9 @@
-﻿from typing import TypedDict, Annotated, Literal
+﻿from sre_parse import CATEGORIES
+from typing import TypedDict, Annotated, Literal
 import operator
 from langchain_ollama import OllamaLLM
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
+from langchain.output_parsers import CommaSeparatedListOutputParser
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from tools import generate_image # Import the generate_image tool from tools.py
@@ -54,9 +56,13 @@ class SwarmUIAgent:
         st.title("SwarmUI Agent")
         with st.expander("Settings", expanded=False):
             self.port = st.text_input("SwarmUI API Port", value="7801")
-            self.llm_model = st.selectbox("LLM Model",["dolphin-mistral", "dolphin-llama3"])
-            self.vision_model = st.selectbox("Vision Model", ["gemma3:12b", "llava","bakllava","qwen-vl", "None"])
+            self.llm_model = st.selectbox("LLM Model",["dolphin-mistral", "dolphin-llama3:8b", "huihui_ai/dolphin3-abliterated:latest", "sam860/dolphin3-qwen2.5:3b", "hammerai/mistral-nemo-uncensored"])
+            self.vision_model = st.selectbox("Vision Model", ["None", "gemma3:12b", "llava","bakllava","qwen-vl"])
+            self.tag_model = st.selectbox("Tag Model", ["None", "DanTagGen"])
         self.llm = OllamaLLM(model=self.llm_model)
+        if self.llm_model == "dolphin-llama3:8b":
+            self.llm.num_ctx = 256000;
+        self.tag_llm = OllamaLLM(model=self.tag_model if self.tag_model != "None" else self.llm_model)
         self.vision_llm = OllamaLLM(model=self.vision_model)
         self.tools = [generate_image]
         self.graph = self._build_graph()
@@ -143,12 +149,8 @@ class SwarmUIAgent:
         # this starts the spinning
         next(sp)
 
-        # Keywords that suggest image generation
-        image_keywords = [
-            "generate", "realistic", "anime", "photo", "cartoon"
-        ]
-
-        needs_image = any(keyword in user_input for keyword in image_keywords)
+        input_category = self.classify_input_llm(user_input).strip('"').strip('`').strip();
+        needs_image = input_category == "image_generation"
 
         # Extract explicit parameters from user input (these will override presets)
         explicit_params, explicit_prompt_type = self.extract_explicit_params(state["user_input"])
@@ -161,6 +163,44 @@ class SwarmUIAgent:
             "image_type_category": "",
             "explicit_prompt_type": explicit_prompt_type
         }
+
+    image_generation_category_examples = [
+        "image_generation Category examples:\n",
+        "User input: \"Generate an image of a cat in a spacesuit.\"",
+        "Category: image_generation\n",
+        "User input: \"Can you make a drawing of a futuristic city?\"",
+        "Category: image_generation\n",
+        "User input: \"Create a stylized heart graphic\"",
+        "Category: image_generation\n",
+        "User input: \"Make beautiful outdoor art\"",
+        "Category: image_generation\n",
+        "User input: \"Draw a portrait of a girl on a beach\"",
+        "Category: image_generation\n",
+    ]
+    general_input_category_examples = [
+        "general_input Category examples:",
+        "User input: \"What's the weather like today?\"",
+        "Category: general_input\n",
+        "User input: \"Tell me a joke.\"",
+        "Category: general_input\n",
+        "User input: \"Generate a beautiful story about a dragon and a princess\"",
+        "Category: general_input\n",
+        "User input: \"Make a recipe for soup\"",
+        "Category: general_input\n",
+    ]
+    
+    def classify_input_llm(self, user_input: str) -> str:
+        categories = self.image_generation_category_examples+self.general_input_category_examples
+        categories_str = "\n".join(categories)
+        prompt = (
+            "Classify the following user input\n\n"
+            f"{categories_str}"
+            f"User input: \"{user_input}\"\n"
+            "Category: "
+        )
+        response = self.llm.invoke(prompt).strip().split()[0]  # Take the first word as the label
+        # Fallback to 'general_input' if not recognized
+        return response
 
     def extract_explicit_params(self, user_input: str) -> dict:
         """Extract explicitly specified image generation parameters from user input"""
@@ -228,27 +268,78 @@ class SwarmUIAgent:
             }
 
         user_input = state["user_input"]
+        output_parser = CommaSeparatedListOutputParser() # Assuming you're using this from previous advice
+        format_instructions = output_parser.get_format_instructions()
         
-        enhancement_prompt = f"""
-User_Request: '{user_input}'
+        if self.tag_model == "DanTagGen":
+            enhancement_prompt_template = f"""Generate tags the precisely describe {user_input}"""
+        else:
+            enhancement_prompt_template = f"""Generate tags that describe the following input: {user_input}\n\n
+            {format_instructions}\n
+            Guidelines: \n
+            ONLY INCLUDE: tags, tag phrases, descriptive phrases\n
+            DO NOT INCLUDE: notes, explanations or other prose, tags or details contrary or in opposition to the input.\n
+            DO INCLUDE: additional detail tags similar to the input, styles and image quality tags that enhance the input\n 
+            HIGHLY ENCOURAGED: random tags for character details, setting, environment, mood, emotion, and actions when missing\n
+            AVOID: Beginning with tags:, enhanced:, prompt:\n"""
 
-Take the User_Request and create a comma-separated Stable Diffusion image generation prompt from it using short descriptive words and phrases.
-tag lists. The prompt should accurately and clearly describe the user's request while enhancing it with artistic details and technical
-quality terms relevent to the indicated style (anime or realism). Follow the guidelines below while creating the prompt:
+        final_enhancement_prompt = enhancement_prompt_template.format(user_input=user_input)
+        raw_llm_output = self.tag_llm.invoke(final_enhancement_prompt).strip()
+        cleaned_llm_output = raw_llm_output # Start with the raw output
+        enhanced_prompt = ""
+        # Check if the active LLM is DanTagGen, as this cleaning is specific to its format
+        if self.tag_model == "DanTagGen":
+            # Extract the content of the 'general:' label
+            general_match = re.search(r"general:\s*(.*)", cleaned_llm_output, re.IGNORECASE)
 
-Guidelines for prompt generation:
-1. Use 1-3 word phrases separated by commas. Do not wrap phrases in quotes or any other characters.
-2. Do not wrap the prompt in quotes or any other characters.
-3. Do not repeat words anywhere within the prompt and keep the number of words less than 120.
-4. Keep the core intent of the user's request unchanged. Add detail and context to missing prompt elements.
-6. Organize tags within the prompt, such as scene layout tags, character description tags, and background description tags.
-7. If the user requests to "avoid" or "not include" certain features, DO NOT INCLUDE those features in the prompt.
+            if general_match:
+                general_content = general_match.group(1)
+            else:
+                # Fallback if 'general:' label is not found
+                self.output.write(
+                    f"⚠️ **Warning**: 'general:' label not found in DanTagGen output. "
+                    f"The specialized cleaning might not work as expected. Raw output: \"{raw_llm_output}\""
+                )
+                general_content = ""
 
-Prompt Format Example: <tag>, <tag>, <tag phrase>, <tag phrase>, <tag>, <tag>
+            # Remove special tokens by finding "<|", then any characters NOT a "|", then "|>", followed by optional whitespace
+            if general_content:
+                cleaned_tags_intermediate = re.sub(r"<\|[^\|]+\|>\s*", "", general_content)
+            else:
+                cleaned_tags_intermediate = ""
 
-Enhanced prompt:"""
+            if cleaned_tags_intermediate:
+                # Replace multiple consecutive spaces with a single space
+                temp_cleaned_tags = re.sub(r'\s+', ' ', cleaned_tags_intermediate)
+                # Normalize spacing around commas (e.g., "tag1  ,  tag2" -> "tag1, tag2")
+                temp_cleaned_tags = re.sub(r'\s*,\s*', ', ', temp_cleaned_tags)
+                # Remove any leading or trailing commas and spaces
+                enhanced_prompt = temp_cleaned_tags.strip(' ,')
 
-        enhanced_prompt = self.llm.invoke(enhancement_prompt).strip()
+        if not enhanced_prompt:
+            try:
+                # Attempt to parse the output into a list of strings
+                parsed_tags_list = output_parser.parse(cleaned_llm_output)
+                # Join the list back into a comma-separated string.
+                # This intrinsically ensures no quotes around individual elements.
+                # Also, strip individual tags of any lingering whitespace or quotes missed by the parser
+                # (though a good parser should handle this).
+                cleaned_tags = [tag.strip().strip('\'"') for tag in parsed_tags_list]
+                enhanced_prompt = ", ".join(filter(None, cleaned_tags)) # Filter out empty strings
+            except Exception as e:
+                # Fallback if parsing fails (e.g., LLM output is too malformed)
+                self.output.write(f"⚠️ Warning: Output parser failed for enhanced prompt. Error: {e}. Using basic cleaning on raw output: \"{raw_llm_output}\"")
+                # Basic cleaning: aggressively remove quotes and re-join
+                # Remove all standalone quotes that might be wrapping tags
+                temp_prompt = re.sub(r'["\']([^"\']+)["\']', r'\1', cleaned_llm_output) # "tag" -> tag
+                temp_prompt = re.sub(r'(?<!\w)["\']|["\'](?!\w)', '', temp_prompt) # Remove remaining loose quotes
+                # Normalize spacing around commas
+                tags = [tag.strip() for tag in temp_prompt.split(',')]
+                enhanced_prompt = ", ".join(filter(None, tags)) # Filter out any empty strings from multiple commas etc.
+        
+            # Ensure no leading/trailing commas or excessive internal spacing
+            enhanced_prompt = re.sub(r'\s*,\s*', ', ', enhanced_prompt).strip(', ')
+
         self.output.write(
             f"""\n
             Generating image with SwarmUI...\n\n
@@ -298,7 +389,8 @@ Enhanced prompt:"""
         prompt = f"Respond naturally to this user input: {state['user_input']}"
         
         response = self.llm.invoke(prompt)
-        
+        next(sp, None)
+
         return {
             **state,
             "messages": [AIMessage(content=response)]
@@ -337,6 +429,7 @@ Enhanced prompt:"""
                 # Create a user-friendly response
                 if 'images' in result and result['images']:
                     response = f"✅ **Image generated successfully!**\n\n"
+                    response += f"✨ **User Request**: {state['user_input']}\n"
                     response += f"🎨 {'**Enhanced Prompt**' if state['explicit_prompt_type'] != 'explicit' else '**Prompt**'}: {state['enhanced_prompt']}\n"
                     response += f"🎯 **Style**: {state['image_type_category']}\n"
                     response += f"📸 **Generated** {len(result['images'])} image(s)\n"
@@ -355,7 +448,7 @@ Enhanced prompt:"""
                         if self.vision_model != "None":
                             # Extract base64 string for vision model
                             base64_str = extract_base64_from_data_uri(data_uri)
-                            description_prompt = "Describe this image in detail. Be as accurate and precise as possible. If a detail is too small or blurry to clearly understand, ignore it."
+                            description_prompt = "Describe this image. If a detail is too small or blurry to clearly understand, ignore it."
                             vision_response = self.vision_llm.invoke(
                                 input=description_prompt,
                                 images=[base64_str]
